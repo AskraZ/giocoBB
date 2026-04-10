@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Labirinto per BB</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; background: #000; color: white; overflow: hidden; font-family: sans-serif; touch-action: none; -webkit-user-select: none; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+        
+        #overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; background: rgba(0,0,0,0.9); padding: 30px; 
+            border: 3px solid #ff0055; border-radius: 15px; z-index: 100; width: 70%;
+        }
+        button { padding: 15px 30px; background: #ff0055; color: white; border: none; border-radius: 8px; font-weight: bold; }
+
+        #win {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #ff0055; flex-direction: column; align-items: center; justify-content: center; z-index: 200;
+        }
+
+        /* Controlli Mobile rinforzati */
+        #controls {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: grid; grid-template-columns: repeat(3, 70px); grid-template-rows: repeat(2, 70px);
+            gap: 15px; z-index: 50;
+        }
+        .btn {
+            background: rgba(255, 255, 255, 0.15); border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px; display: flex; align-items: center; justify-content: center;
+            font-size: 1.8rem; color: white; user-select: none; -webkit-tap-highlight-color: transparent;
+        }
+        .btn:active { background: rgba(255, 0, 85, 0.6); border-color: #ff0055; }
+        .up { grid-column: 2; }
+        .left { grid-column: 1; grid-row: 2; }
+        .down { grid-column: 2; grid-row: 2; }
+        .right { grid-column: 3; grid-row: 2; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <h1 style="color: #ff0055;">PER BB</h1>
+        <p>Trova l'uscita luminosa</p>
+        <button onclick="document.getElementById('overlay').style.display='none'">GIOCA</button>
+    </div>
+
+    <div id="win">
+        <h1 style="font-size: 2.5rem;">"BB hai rotto, amami"</h1>
+    </div>
+
+    <div id="controls">
+        <div class="btn up" data-key="KeyW">▲</div>
+        <div class="btn left" data-key="KeyA">◀</div>
+        <div class="btn down" data-key="KeyS">▼</div>
+        <div class="btn right" data-key="KeyD">▶</div>
+    </div>
+
+    <canvas id="game"></canvas>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        // Texture Mattoni
+        const texSize = 64;
+        const textureCanvas = document.createElement('canvas');
+        textureCanvas.width = texSize; textureCanvas.height = texSize;
+        const tCtx = textureCanvas.getContext('2d');
+        tCtx.fillStyle = '#222'; tCtx.fillRect(0,0,64,64);
+        for(let y=0; y<64; y+=16) {
+            let offset = (y%32===0)?0:16;
+            for(let x=0; x<64; x+=32) {
+                tCtx.fillStyle = `rgb(${60+Math.random()*20}, 30, 40)`;
+                tCtx.fillRect(x+offset+1, y+1, 30, 14);
+            }
+        }
+
+        const map = [
+            [1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,1,0,1],
+            [1,0,1,1,1,1,0,1,0,1],
+            [1,0,1,0,0,0,0,0,0,1],
+            [1,0,1,0,1,1,1,1,0,1],
+            [1,0,0,0,1,0,0,0,0,1],
+            [1,1,1,0,1,0,1,1,1,1],
+            [1,0,0,0,1,0,0,0,0,1],
+            [1,0,1,1,1,1,1,1,2,1],
+            [1,1,1,1,1,1,1,1,1,1]
+        ];
+
+        let player = { x: 1.5, y: 1.5, dir: 0 };
+        let keys = {};
+
+        // GESTIONE INPUT (Tastiera + Touch)
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        // Sistema Touch universale
+        document.querySelectorAll('.btn').forEach(btn => {
+            const code = btn.getAttribute('data-key');
+            
+            const start = (e) => {
+                e.preventDefault();
+                keys[code] = true;
+            };
+            const end = (e) => {
+                e.preventDefault();
+                keys[code] = false;
+            };
+
+            btn.addEventListener('touchstart', start, {passive: false});
+            btn.addEventListener('touchend', end, {passive: false});
+            // Supporto anche per mouse su PC per test
+            btn.addEventListener('mousedown', start);
+            btn.addEventListener('mouseup', end);
+        });
+
+        function frame() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            let moveSpeed = 0.07;
+            let rotSpeed = 0.06;
+            
+            let nx = player.x;
+            let ny = player.y;
+
+            if (keys['KeyW'] || keys['ArrowUp']) { nx += Math.cos(player.dir)*moveSpeed; ny += Math.sin(player.dir)*moveSpeed; }
+            if (keys['KeyS'] || keys['ArrowDown']) { nx -= Math.cos(player.dir)*moveSpeed; ny -= Math.sin(player.dir)*moveSpeed; }
+            if (keys['KeyA'] || keys['ArrowLeft']) player.dir -= rotSpeed;
+            if (keys['KeyD'] || keys['ArrowRight']) player.dir += rotSpeed;
+
+            if (map[Math.floor(ny)][Math.floor(nx)] !== 1) {
+                player.x = nx;
+                player.y = ny;
+            }
+
+            if (map[Math.floor(player.y)][Math.floor(player.x)] === 2) {
+                document.getElementById('win').style.display = 'flex';
+                return;
+            }
+
+            // Rendering Cielo e Pavimento
+            let sky = ctx.createLinearGradient(0,0,0,canvas.height/2);
+            sky.addColorStop(0, '#200020'); sky.addColorStop(1, '#ff0080');
+            ctx.fillStyle = sky; ctx.fillRect(0,0,canvas.width, canvas.height/2);
+            ctx.fillStyle = '#111'; ctx.fillRect(0, canvas.height/2, canvas.width, canvas.height/2);
+
+            // Raycasting
+            for (let i = 0; i < canvas.width; i++) {
+                let angle = (player.dir - 0.5) + (i / canvas.width);
+                let rX = Math.cos(angle); let rY = Math.sin(angle);
+                let d = 0; let h = 0;
+
+                while (d < 12) {
+                    d += 0.05;
+                    let tx = Math.floor(player.x + rX * d);
+                    let ty = Math.floor(player.y + rY * d);
+                    if (map[ty][tx] > 0) {
+                        h = map[ty][tx];
+                        let wallH = canvas.height / (d * Math.cos(angle - player.dir));
+                        if(h === 1) {
+                            let wallX = (player.x + rX * d) % 1;
+                            if (Math.abs(wallX) < 0.05) wallX = (player.y + rY * d) % 1;
+                            ctx.drawImage(textureCanvas, Math.floor(wallX*64), 0, 1, 64, i, (canvas.height-wallH)/2, 1, wallH);
+                            ctx.fillStyle = `rgba(0,0,0,${d/12})`;
+                            ctx.fillRect(i, (canvas.height-wallH)/2, 1, wallH);
+                        } else {
+                            ctx.fillStyle = '#ff0055';
+                            ctx.fillRect(i, (canvas.height-wallH)/2, 1, wallH);
+                        }
+                        break;
+                    }
+                }
+            }
+            requestAnimationFrame(frame);
+        }
+        frame();
+    </script>
+</body>
+</html>
